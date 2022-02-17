@@ -7,55 +7,78 @@ import openstack
 
 
 def new_project(uuid):
-    p = openstack.get_project(uuid)
     return {
-        "name": p["name"],
+        "name": project_map[uuid],
         "server_count": 0,
         "flavor_ram": 0,
         "flavor_vcpus": 0,
         "volume_count": 0,
         "volume_size": 0,
+        "floating_ips": 0,
     }
 
 
-projects = {}
+stats = {}
+project_map = {}
 
 pool = concurrent.futures.ThreadPoolExecutor(max_workers=100)
 futures = []
-for volume in openstack.list_volumes():
+
+# Our OpenStack is slow. This script is designed to submit everything in
+# parallel and then process results as they are returned.
+
+vols = pool.submit(openstack.list_volumes)
+servers = pool.submit(openstack.list_servers)
+fips = pool.submit(openstack.list_floating_ips)
+projects = pool.submit(openstack.list_projects)
+
+for volume in vols.result():
     print("looking up volume", volume["Name"])
-    futures.append(pool.submit(openstack.get_volume, volume["ID"]))
+    futures.append(
+        pool.submit(lambda vid: ("volume", openstack.get_volume(vid)), volume["ID"])
+    )
 
-for future in concurrent.futures.as_completed(futures):
-    v = future.result()
-    print("processing volume", v["name"])
-    project = v["os-vol-tenant-attr:tenant_id"]
-
-    if project not in projects:
-        projects[project] = new_project(project)
-
-    projects[project]["volume_count"] += 1
-    projects[project]["volume_size"] += v["size"]
-
-futures = []
-for server in openstack.list_servers():
+for server in servers.result():
     print("looking up server", server["Name"])
-    futures.append(pool.submit(openstack.get_server, server["ID"]))
+    futures.append(
+        pool.submit(lambda sid: ("server", openstack.get_server(sid)), server["ID"])
+    )
+
+for fip in fips.result():
+    print("looking up floating ip", fip["Floating IP Address"])
+    futures.append(
+        pool.submit(lambda fid: ("fip", openstack.get_floating_ip(fid)), fip["ID"])
+    )
+
+for project in projects.result():
+    project_map[project["ID"]] = project["Name"]
 
 for future in concurrent.futures.as_completed(futures):
-    s = future.result()
-    print("processing server", s["name"])
-    project = s["project_id"]
+    rtype, rinfo = future.result()
 
-    if project not in projects:
-        projects[project] = new_project(project)
+    if rtype == "fip":
+        pid = rinfo["project_id"]
+        if pid not in stats:
+            stats[pid] = new_project(pid)
 
-    flavor_id = s["flavor"].split("(")[1].split(")")[0]
-    flavor = openstack.get_flavor(flavor_id)
-    projects[project]["server_count"] += 1
-    projects[project]["flavor_ram"] += flavor["ram"]
-    projects[project]["flavor_vcpus"] += flavor["vcpus"]
+        if rinfo["port_id"]:
+            stats[pid]["floating_ips"] += 1
+    elif rtype == "volume":
+        pid = rinfo["os-vol-tenant-attr:tenant_id"]
+        if pid not in stats:
+            stats[pid] = new_project(pid)
 
+        stats[pid]["volume_count"] += 1
+        stats[pid]["volume_size"] += rinfo["size"]
+    elif rtype == "server":
+        pid = rinfo["project_id"]
+        if pid not in stats:
+            stats[pid] = new_project(pid)
+        flavor_id = rinfo["flavor"].split("(")[1].split(")")[0]
+        flavor = openstack.get_flavor(flavor_id)
+        stats[pid]["server_count"] += 1
+        stats[pid]["flavor_ram"] += flavor["ram"]
+        stats[pid]["flavor_vcpus"] += flavor["vcpus"]
 
 with open("stats.json", "w") as fd:
-    json.dump(projects, fd, indent=2)
+    json.dump(stats, fd, indent=2)

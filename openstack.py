@@ -18,6 +18,11 @@ def openstack(*args):
     return json.loads(subprocess.check_output(cmd))
 
 
+def list_projects():
+    """Return a list of projects"""
+    return openstack("project", "list")
+
+
 @cache
 def get_project(uuid):
     """Return details about a single project"""
@@ -50,3 +55,13 @@ def list_volumes():
 def get_volume(uuid):
     """Return details about a single volume"""
     return openstack("volume", "show", uuid)
+
+
+def list_floating_ips():
+    """Return a list of floating ips"""
+    return openstack("floating", "ip", "list")
+
+
+def get_floating_ip(uuid):
+    """Return information about a single floating ip"""
+    return openstack("floating", "ip", "show", uuid)
