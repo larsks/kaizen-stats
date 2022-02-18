@@ -22,7 +22,7 @@ def new_project(uuid):
 stats = {}
 project_map = {}
 
-pool = concurrent.futures.ThreadPoolExecutor(max_workers=100)
+pool = concurrent.futures.ThreadPoolExecutor(max_workers=50)
 futures = []
 
 # Our OpenStack is slow. This script is designed to submit everything in
