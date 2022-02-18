@@ -34,19 +34,16 @@ fips = pool.submit(openstack.list_floating_ips)
 projects = pool.submit(openstack.list_projects)
 
 for volume in vols.result():
-    print("looking up volume", volume["Name"])
     futures.append(
         pool.submit(lambda vid: ("volume", openstack.get_volume(vid)), volume["ID"])
     )
 
 for server in servers.result():
-    print("looking up server", server["Name"])
     futures.append(
         pool.submit(lambda sid: ("server", openstack.get_server(sid)), server["ID"])
     )
 
 for fip in fips.result():
-    print("looking up floating ip", fip["Floating IP Address"])
     futures.append(
         pool.submit(lambda fid: ("fip", openstack.get_floating_ip(fid)), fip["ID"])
     )
