@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import json
+import subprocess
 
 import openstack
 
@@ -54,7 +55,10 @@ for project in projects.result():
     project_map[project["ID"]] = project["Name"]
 
 for future in concurrent.futures.as_completed(futures):
-    rtype, rinfo = future.result()
+    try:
+        rtype, rinfo = future.result()
+    except subprocess.CalledProcessError as err:
+        print("ignoring failed result:", err.stderr)
 
     if rtype == "fip":
         pid = rinfo["project_id"]
